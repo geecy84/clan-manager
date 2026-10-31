@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clan Manager</title>
+<style>
+:root{--bg:#0f1420;--card:#171e2e;--card2:#1e2740;--tx:#e8ecf5;--mut:#8b96b0;--acc:#4f8cff;--ok:#3ecf8e;--warn:#f5b73d;--bad:#ef5b5b;--bd:#2a3550}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 8px 0 0}nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button,.btn{background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}
+nav button.on{background:var(--acc);border-color:var(--acc)}.btn:hover,nav button:hover{filter:brightness(1.15)}
+.btn.ok{background:#1f5a42}.btn.bad{background:#6a2a2a}.btn.sm{padding:2px 8px;font-size:12px}
+main{padding:16px;max-width:1300px;margin:0 auto}.grid{display:grid;gap:12px}.k4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.c2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}.card h3{margin:0 0 8px;font-size:14px;color:var(--mut);font-weight:600}
+.kpi{font-size:26px;font-weight:700}.sub{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mut);font-weight:600;cursor:pointer}tr.row:hover{background:var(--card2);cursor:pointer}
+.tw{overflow-x:auto}.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;background:var(--card2)}
+.g-A,.g-A\+{background:#1f5a42}.g-B{background:#2b5a2b}.g-C{background:#5a5326}.g-D{background:#6a4a1f}.g-F{background:#6a2a2a}.g-N\/A{background:#333}
+.r-promote{background:#1f5a42}.r-demote{background:#6a4a1f}.r-warn{background:#6a4a1f}.r-kick{background:#6a2a2a}.s-watch{color:var(--warn)}.s-excused{color:var(--acc)}
+input,select,textarea{background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font:inherit}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-start;justify-content:center;overflow:auto;z-index:20;padding:20px}
+.modal.on{display:flex}.modal>div{background:var(--bg);border:1px solid var(--bd);border-radius:12px;width:min(1000px,100%);padding:16px}
+canvas{max-height:240px}.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.mut{color:var(--mut)}
+.set label{display:grid;grid-template-columns:260px 1fr;gap:8px;margin:4px 0;align-items:center}.set h4{margin:14px 0 4px;color:var(--acc)}
+pre{white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--bd)}
+.bar{height:6px;background:var(--card2);border-radius:3px;min-width:60px}.bar i{display:block;height:100%;border-radius:3px;background:var(--acc)}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Clan Manager</h1>
+  <nav id="nav"></nav>
+  <span style="flex:1"></span>
+  <span class="sub" id="poll"></span>
+  <button class="btn" onclick="refreshNow()">⟳ Refresh from game</button>
+</header>
+<main id="main"></main>
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div id="mbody"></div></div>
+<script src="/vendor/chart.umd.js"></script>
+<script>
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=(p,o)=>fetch(p,o&&{...o,headers:{'Content-Type':'application/json'},body:o.body&&JSON.stringify(o.body)}).then(r=>r.json());
+const fmt=(v,d=0)=>v==null?'–':Number(v).toFixed(d);
+const ago=iso=>{if(!iso)return'–';const d=(Date.now()-new Date(iso))/864e5;return d<1?Math.round(d*24)+'h ago':d.toFixed(1)+'d ago'};
+const gp=g=>`<span class="pill g-${esc(g)}">${esc(g)}</span>`;
+const roleName={member:'Member',elder:'Elder',coLeader:'Co-leader',leader:'Leader'};
+const tabs=['Overview','Members','War','Actions','Settings','Log'];
+let tab=localStorage.tab||'Overview',charts=[],members=[],sort={k:'score',d:1};
+
+$('#nav').innerHTML=tabs.map(t=>`<button data-t="${t}" onclick="go('${t}')">${t}</button>`).join('');
+function go(t){tab=t;localStorage.tab=t;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));render()}
+function killCharts(){charts.forEach(c=>c.destroy());charts=[]}
+function chart(id,cfg){const el=document.getElementById(id);if(!el)return;Chart.defaults.color='#8b96b0';Chart.defaults.borderColor='#2a3550';charts.push(new Chart(el,cfg))}
+const line=(labels,sets,extra={})=>({type:'line',data:{labels,datasets:sets.map((s,i)=>({tension:.25,pointRadius:2,borderColor:s.c||['#4f8cff','#3ecf8e','#f5b73d','#ef5b5b'][i],backgroundColor:s.bg||'transparent',...s}))},options:{responsive:true,maintainAspectRatio:false,...extra}});
+function closeModal(){$('#modal').classList.remove('on');killCharts();render(true)}
+async function refreshNow(){$('#poll').textContent='refreshing…';await api('/api/poll',{method:'POST',body:{}});render()}
+
+async function render(keepModal){
+  if(!keepModal)killCharts();
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  const ov=await api('/api/overview');
+  $('#title').textContent=(ov.clan?.name||'Clan Manager')+' '+ov.tag;
+  const lp=ov.lastPoll;$('#poll').innerHTML=lp?(lp.ok?'✓ updated ':'⚠ errors ')+ago(lp.at):'no data yet';
+  if(lp&&!lp.ok)$('#poll').title=lp.errors.join('\n');
+  if(keepModal&&$('#modal').classList.contains('on'))return;
+  await ({Overview,Members,War,Actions,Settings,Log})[tab](ov);
+}
+
+// ---------- Overview ----------
+async function Overview(ov){
+  const s=ov.summary,lw=ov.lastWar,c=ov.clan||{};
+  const part=ov.warSeries.length?ov.warSeries.at(-1):null;
+  $('#main').innerHTML=`
+  ${lp0(ov)}
+  <div class="grid k4">
+    <div class="card"><h3>Members</h3><div class="kpi">${c.members??'–'}/50</div><div class="sub">avg score ${fmt(s.avgScore)}</div></div>
+    <div class="card"><h3>Clan score / war trophies</h3><div class="kpi">${c.clanScore??'–'}</div><div class="sub">${c.clanWarTrophies??'–'} war trophies</div></div>
+    <div class="card"><h3>Last war</h3><div class="kpi">${lw?'#'+lw.rank:'–'}</div><div class="sub">${lw?lw.fame+' fame · '+(lw.trophy_change>=0?'+':'')+lw.trophy_change+' trophies':'no war log yet'}</div></div>
+    <div class="card"><h3>Participation last war</h3><div class="kpi">${part&&part.total?Math.round(part.played/part.total*100)+'%':'–'}</div><div class="sub">${part?part.played+'/'+part.total+' played':''}</div></div>
+    <div class="card"><h3>At-risk members</h3><div class="kpi" style="color:var(--warn)">${s.atRisk}</div><div class="sub">below watch threshold</div></div>
+    <div class="card"><h3>Pending recommendations</h3><div class="kpi">${ov.pendingRecs}</div><div class="sub"><a href="#" style="color:var(--acc)" onclick="go('Actions');return false">review</a></div></div>
+  </div>
+  <div class="grid c2" style="margin-top:12px">
+    <div class="card"><h3>Fame per war &amp; finishing rank</h3><div style="height:240px"><canvas id="c1"></canvas></div></div>
+    <div class="card"><h3>Members who played (%)</h3><div style="height:240px"><canvas id="c2"></canvas></div></div>
+    <div class="card"><h3>Clan size &amp; score over time</h3><div style="height:240px"><canvas id="c3"></canvas></div></div>
+    <div class="card"><h3>Grade distribution</h3><div style="height:240px"><canvas id="c4"></canvas></div></div>
+  </div>`;
+  const L=ov.warSeries.map(w=>w.label);
+  chart('c1',{type:'bar',data:{labels:L,datasets:[{label:'Fame',data:ov.warSeries.map(w=>w.fame),backgroundColor:'#4f8cff',yAxisID:'y'},{type:'line',label:'Rank',data:ov.warSeries.map(w=>w.rank),borderColor:'#f5b73d',yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,scales:{y1:{position:'right',reverse:true,min:1,max:5,grid:{display:false},ticks:{stepSize:1}}}}});
+  chart('c2',line(L,[{label:'% played',data:ov.warSeries.map(w=>w.total?Math.round(w.played/w.total*100):null)}],{scales:{y:{min:0,max:100}}}));
+  chart('c3',line(ov.clanSeries.map(d=>d.day),[{label:'Members',data:ov.clanSeries.map(d=>d.members),yAxisID:'y'},{label:'Clan score',data:ov.clanSeries.map(d=>d.clan_score),yAxisID:'y1'}],{scales:{y1:{position:'right',grid:{display:false}}}}));
+  const order=['A+','A','B','C','D','F','N/A'];
+  chart('c4',{type:'bar',data:{labels:order,datasets:[{label:'Members',data:order.map(g=>s.gradeDistribution[g]||0),backgroundColor:['#1f8f5f','#3ecf8e','#7cc257','#f5b73d','#f58a3d','#ef5b5b','#555']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+}
+function lp0(ov){return ov.lastPoll&&!ov.lastPoll.ok?`<div class="card" style="border-color:var(--bad);margin-bottom:12px"><b>Last refresh had errors</b><pre>${esc(ov.lastPoll.errors.join('\n'))}</pre></div>`:(!ov.lastPoll?`<div class="card" style="margin-bottom:12px">Waiting for first data pull… set <code>CR_API_KEY</code> and press “Refresh from game”.</div>`:'')}
+
+// ---------- Members ----------
+async function Members(){
+  members=await api('/api/members');
+  $('#main').innerHTML=`<div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Search name/tag" oninput="drawMembers()"><select id="fs" onchange="drawMembers()"><option value="">All</option><option value="watch">At risk</option><option value="rec">Has recommendation</option><option value="new">New / no data</option><option value="excused">Excused</option></select><a class="btn" href="/api/export/members.csv">Export CSV</a></div><div class="card tw"><table id="mt"></table></div>`;
+  drawMembers();
+}
+function drawMembers(){
+  const q=($('#q')?.value||'').toLowerCase(),f=$('#fs')?.value||'';
+  let rows=members.filter(m=>(!q||m.name.toLowerCase().includes(q)||m.tag.toLowerCase().includes(q))&&(!f||(f==='rec'?m.rec&&!m.snoozed:m.status===f)));
+  const {k,d}=sort;rows.sort((a,b)=>{const x=a[k]??-1,y=b[k]??-1;return (typeof x==='string'?x.localeCompare(y):x-y)*d});
+  const H=[['name','Name'],['role','Role'],['grade','Grade'],['score','Score'],['decksPct','Decks %'],['fameScore','Fame'],['donationsAvg','Don/wk'],['daysSinceSeen','Seen'],['countedWars','Wars'],['tenureDays','Tenure'],['trophies','🏆'],['rec','Action']];
+  $('#mt').innerHTML=`<tr>${H.map(([k,l])=>`<th onclick="sortBy('${k}')">${l}${sort.k===k?(sort.d>0?' ▼':' ▲'):''}</th>`).join('')}</tr>`+rows.map(m=>`<tr class="row" onclick="openMember('${m.tag.slice(1)}')">
+    <td class="s-${m.status}">${esc(m.name)}${m.excused?' 🏖':''}</td><td>${roleName[m.role]||m.role}</td><td>${gp(m.grade)}</td>
+    <td><div class="bar"><i style="width:${m.score||0}%"></i></div>${fmt(m.score)}</td><td>${fmt(m.decksPct)}</td><td>${fmt(m.fameScore)}</td><td>${fmt(m.donationsAvg)}</td>
+    <td>${m.daysSinceSeen==null?'–':m.daysSinceSeen<1?'today':fmt(m.daysSinceSeen)+'d'}</td><td>${m.countedWars}</td><td>${m.tenureDays==null?'≥tracked':fmt(m.tenureDays)+'d'}</td><td>${m.trophies}</td>
+    <td>${m.rec&&!m.snoozed?`<span class="pill r-${m.rec.action}">${m.rec.action}${m.rec.to?' → '+roleName[m.rec.to]:''}</span>`:''}</td></tr>`).join('');
+}
+function sortBy(k){sort=sort.k===k?{k,d:-sort.d}:{k,d:k==='name'||k==='role'?1:-1};drawMembers()}
+
+async function openMember(t){
+  const d=await api('/api/member/%23'+t);const m=d.member;
+  const H=d.history.slice().reverse();
+  $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">${esc(m.name)}</h2>${gp(m.grade||'N/A')}<span class="mut">${m.tag} · ${roleName[m.role]||m.role}${m.status==='left'?' · LEFT CLAN':''}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
+  ${m.rec?`<div class="card" style="margin:10px 0;border-color:var(--warn)"><b>Recommendation: ${m.rec.action.toUpperCase()}${m.rec.to?' → '+roleName[m.rec.to]:''}</b><div class="sub">${esc(m.rec.reasons.join('; '))}</div></div>`:''}
+  <div class="grid c2" style="margin-top:10px">
+    <div class="card"><h3>Fame per war</h3><div style="height:200px"><canvas id="m1"></canvas></div></div>
+    <div class="card"><h3>Decks used per war</h3><div style="height:200px"><canvas id="m2"></canvas></div></div>
+    <div class="card"><h3>Weekly donations</h3><div style="height:200px"><canvas id="m3"></canvas></div></div>
+    <div class="card"><h3>Trophies</h3><div style="height:200px"><canvas id="m4"></canvas></div></div>
+  </div>
+  <div class="row2" style="margin:12px 0"><b>Log:</b>
+    <input id="an" placeholder="note (optional)" style="flex:1;min-width:160px">
+    ${['warn','promote','demote','kick','note','snooze'].map(a=>`<button class="btn sm" onclick="logAction('${m.tag}','${a}')">${a==='snooze'?'snooze recs':a==='note'?'add note':'log '+a}</button>`).join('')}
+  </div>
+  <div class="row2" style="margin-bottom:12px"><b>Excuse (holiday etc.):</b><input type="date" id="ef"><input type="date" id="et"><input id="er" placeholder="reason"><button class="btn sm" onclick="addExcuse('${m.tag}')">Add</button></div>
+  <div class="card tw"><h3>War history</h3><table><tr><th>War</th><th>Decks</th><th>Fame</th><th>Boat atk</th><th>Grade</th><th></th></tr>
+  ${d.history.map(h=>`<tr><td>S${h.season_id} W${h.section_index+1}</td><td>${h.decks}/16</td><td>${h.fame}</td><td>${h.boats??''}</td><td>${h.grade?gp(h.grade):''}</td><td class="mut">${h.excluded==='new'?'new joiner – not counted':h.excluded==='excused'?'excused':''}</td></tr>`).join('')||'<tr><td colspan=6 class="mut">No war data yet</td></tr>'}</table></div>
+  <div class="card" style="margin-top:12px"><h3>Actions, notes &amp; events</h3>${[...d.actions.map(a=>`<div>${a.ts.slice(0,10)} · <b>${a.type}</b> ${esc(a.note)}</div>`),...d.events.map(e=>`<div class="mut">${e.ts.slice(0,10)} · ${e.type} ${esc(e.detail)}</div>`),...d.excuses.map(e=>`<div>🏖 ${e.from_date} → ${e.to_date} ${esc(e.reason)} <button class="btn sm bad" onclick="delExcuse(${e.id},'${t}')">remove</button></div>`)].join('')||'<span class="mut">Nothing yet</span>'}</div>`;
+  $('#modal').classList.add('on');
+  const L=H.map(h=>`S${h.season_id}W${h.section_index+1}`);
+  chart('m1',line(L,[{label:'Fame',data:H.map(h=>h.fame)}]));
+  chart('m2',{type:'bar',data:{labels:L,datasets:[{label:'Decks',data:H.map(h=>h.decks),backgroundColor:'#3ecf8e'}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:0,max:16}},plugins:{legend:{display:false}}}});
+  chart('m3',{type:'bar',data:{labels:d.donations.map(x=>x.start),datasets:[{label:'Donations',data:d.donations.map(x=>x.v),backgroundColor:'#f5b73d'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  chart('m4',line(d.trophies.map(x=>x.day),[{label:'Trophies',data:d.trophies.map(x=>x.v)}]));
+}
+async function logAction(tag,type){await api('/api/actions',{method:'POST',body:{tag,type,note:$('#an').value}});openMember(tag.slice(1))}
+async function addExcuse(tag){const f=$('#ef').value,t=$('#et').value;if(!f||!t)return alert('Pick from and to dates');await api('/api/excuses',{method:'POST',body:{tag,from_date:f,to_date:t,reason:$('#er').value}});openMember(tag.slice(1))}
+async function delExcuse(id,t){await api('/api/excuses/'+id,{method:'DELETE'});openMember(t)}
+
+// ---------- War ----------
+async function War(){
+  const [cur,wars]=await Promise.all([api('/api/war-current'),api('/api/wars')]);
+  const n=cur.nudge,r=cur.race;
+  const dayType={training:'Training day',warDay:'War day',colosseum:'Colosseum'}[r?.periodType]||r?.periodType||'–';
+  $('#main').innerHTML=`<div class="grid c2">
+  <div class="card"><h3>Live race — ${esc(dayType)}</h3>${r?`<div class="kpi">${r.fame??0} fame</div><div class="sub">updated ${ago(r.at)}</div>
+   <table style="margin-top:8px"><tr><th>Clan</th><th>Fame</th><th>Finished</th></tr>${(r.clans||[]).sort((a,b)=>b.fame-a.fame).map(c=>`<tr><td>${esc(c.name)}</td><td>${c.fame}</td><td>${c.finishTime?ago(c.finishTime):''}</td></tr>`).join('')}</table>`:'<span class="mut">No race data yet</span>'}</div>
+  <div class="card"><h3>Fame progress this week</h3><div style="height:220px"><canvas id="w1"></canvas></div></div></div>
+  <div class="card" style="margin-top:12px"><h3>Nudge list — who still has decks today</h3>
+  ${n?`<div class="row2"><b>${n.totalLeft} decks left</b><span class="mut">${n.live?'':'(not a war day)'}</span><button class="btn sm" onclick="navigator.clipboard.writeText($('#nt').textContent)">Copy for clan chat</button></div><pre id="nt">${esc(n.text)}</pre>
+  <div class="tw"><table><tr><th>Member</th><th>Role</th><th>Left today</th><th>Total used</th></tr>${n.missing.map(x=>`<tr><td>${esc(x.name)}</td><td>${roleName[x.role]}</td><td>${x.left}</td><td>${x.usedTotal}</td></tr>`).join('')}</table></div>`:'<span class="mut">No data</span>'}</div>
+  <div class="card tw" style="margin-top:12px"><h3>Previous wars (click for member grades)</h3><table><tr><th>War</th><th>Ended</th><th>Rank</th><th>Fame</th><th>Trophies</th><th>Finish time</th></tr>
+  ${wars.map(w=>`<tr class="row" onclick="openWar(${w.season_id},${w.section_index})"><td>S${w.season_id} W${w.section_index+1}</td><td>${w.ended_at.slice(0,10)}</td><td>#${w.rank}</td><td>${w.fame}</td><td>${w.trophy_change>=0?'+':''}${w.trophy_change}</td><td>${w.finish_time?w.finish_time.slice(0,16).replace('T',' '):'did not finish'}</td></tr>`).join('')||'<tr><td colspan=6 class="mut">No race log yet</td></tr>'}</table></div>`;
+  chart('w1',line(cur.snaps.map(s=>s.ts.slice(5,13).replace('T',' ')+'h'),[{label:'Clan fame',data:cur.snaps.map(s=>s.fame)}],{plugins:{legend:{display:false}}}));
+}
+async function openWar(s,i){
+  const d=await api(`/api/war/${s}/${i}`);
+  $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">S${s} W${i+1} — rank #${d.war.rank}</h2><span class="mut">fame target for 100%: ${Math.round(d.fameTarget)}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
+  <div class="card tw" style="margin-top:10px"><table><tr><th>Player</th><th>Grade</th><th>Decks</th><th>Fame</th><th>Boat atk</th><th>Repair</th></tr>
+  ${d.players.map(p=>`<tr><td>${esc(p.name)}${p.current?'':' <span class="mut">(left)</span>'}</td><td>${gp(p.grade)}</td><td>${p.decks}/16</td><td>${p.fame}</td><td>${p.boats}</td><td>${p.repair}</td></tr>`).join('')}</table></div>
+  <div class="card tw" style="margin-top:10px"><h3>All clans in this race</h3><table>${d.war.standings.map(c=>`<tr><td>#${c.rank}</td><td>${esc(c.name)}</td><td>${c.fame}</td><td>${c.trophyChange>=0?'+':''}${c.trophyChange}</td></tr>`).join('')}</table></div>`;
+  $('#modal').classList.add('on');
+}
+
+// ---------- Actions ----------
+async function Actions(){
+  const recs=await api('/api/recommendations');
+  const live=recs.filter(m=>!m.snoozed);
+  $('#main').innerHTML=`<div class="card"><h3>Recommendation queue</h3><p class="mut">The Clash Royale API is read-only: do the promote/demote/kick in the game, then press “Done” to log it. “Snooze” hides a member's recommendation for the configured days.</p>
+  <div class="tw"><table><tr><th>Action</th><th>Member</th><th>Role</th><th>Grade</th><th>Why</th><th></th></tr>
+  ${live.map(m=>`<tr><td><span class="pill r-${m.rec.action}">${m.rec.action}${m.rec.to?' → '+roleName[m.rec.to]:''}</span></td><td><a href="#" style="color:var(--acc)" onclick="openMember('${m.tag.slice(1)}');return false">${esc(m.name)}</a></td><td>${roleName[m.role]}</td><td>${gp(m.grade)} ${fmt(m.score)}</td><td style="white-space:normal">${esc(m.rec.reasons.join('; '))}</td>
+  <td class="row2"><button class="btn sm ok" onclick="doneRec('${m.tag}','${m.rec.action}')">Done</button><button class="btn sm" onclick="snooze('${m.tag}')">Snooze</button></td></tr>`).join('')||'<tr><td colspan=6 class="mut">Nothing to action 🎉</td></tr>'}</table></div></div>
+  <div class="card" style="margin-top:12px"><h3>Snoozed / excused</h3>${recs.filter(m=>m.snoozed).map(m=>esc(m.name)).join(', ')||'<span class="mut">none</span>'}</div>`;
+}
+async function doneRec(tag,type){await api('/api/actions',{method:'POST',body:{tag,type,note:'from queue'}});Actions()}
+async function snooze(tag){await api('/api/actions',{method:'POST',body:{tag,type:'snooze',note:'from queue'}});Actions()}
+
+// ---------- Settings (generic form) ----------
+let SET,DEF;
+async function Settings(){
+  const r=await api('/api/settings');SET=r.settings;DEF=r.defaults;
+  const build=(o,p)=>Object.entries(o).map(([k,v])=>{const path=p?p+'.'+k:k;
+    if(v&&typeof v==='object'&&!Array.isArray(v))return `<h4>${esc(path)}</h4>`+build(v,path);
+    const t=typeof v;const val=Array.isArray(v)?v.join(', '):v;
+    return `<label>${esc(path)}${t==='boolean'?`<input type="checkbox" data-p="${path}" data-t="b" ${v?'checked':''}>`:`<input data-p="${path}" data-t="${Array.isArray(v)?'a':t==='number'?'n':'s'}" value="${esc(val)}">`}</label>`}).join('');
+  $('#main').innerHTML=`<div class="card set"><h3>Grading, rules &amp; notifications</h3><p class="mut">Weights are relative (they're normalised). Grade thresholds are the minimum score for each grade. Everything here takes effect immediately for scoring.</p>${build(SET,'')}
+  <div class="row2" style="margin-top:14px"><button class="btn ok" onclick="saveSet()">Save</button><button class="btn" onclick="testDiscord()">Send test Discord message</button><button class="btn bad" onclick="resetSet()">Reset to defaults</button><span id="sm" class="mut"></span></div></div>`;
+}
+function readSet(){const o={};document.querySelectorAll('[data-p]').forEach(el=>{const ks=el.dataset.p.split('.');let c=o;ks.slice(0,-1).forEach(k=>c=c[k]=c[k]||{});
+  const t=el.dataset.t;c[ks.at(-1)]=t==='b'?el.checked:t==='n'?Number(el.value):t==='a'?el.value.split(',').map(s=>s.trim()).filter(Boolean):(el.value!==''&&!isNaN(el.value)&&ks.at(-1)==='fameTarget'?Number(el.value):el.value)});return o}
+async function saveSet(){await api('/api/settings',{method:'PUT',body:readSet()});$('#sm').textContent='Saved ✓'}
+async function testDiscord(){await saveSet();const r=await api('/api/test-discord',{method:'POST',body:{}});$('#sm').textContent=r.sent?'Test sent ✓':'Not sent — check webhook URL'}
+async function resetSet(){if(confirm('Reset all settings?')){await api('/api/settings',{method:'PUT',body:{}});Settings()}}
+
+// ---------- Log ----------
+async function Log(){
+  const [ev,ac,ex]=await Promise.all([api('/api/events'),api('/api/actions'),api('/api/excuses')]);
+  $('#main').innerHTML=`<div class="grid c2"><div class="card tw"><h3>Joins, leaves &amp; role changes</h3><table>${ev.map(e=>`<tr><td>${e.ts.slice(0,10)}</td><td>${e.type}</td><td>${esc(e.name)}</td><td class="mut">${esc(e.detail)}</td></tr>`).join('')||'<tr><td class="mut">nothing yet</td></tr>'}</table></div>
+  <div class="card tw"><h3>Leadership actions &amp; notes</h3><table>${ac.map(a=>`<tr><td>${a.ts.slice(0,10)}</td><td>${a.type}</td><td>${esc(a.name)}</td><td class="mut">${esc(a.note)}</td></tr>`).join('')||'<tr><td class="mut">nothing yet</td></tr>'}</table></div>
+  <div class="card tw"><h3>Excused absences</h3><table>${ex.map(e=>`<tr><td>${esc(e.name||e.tag)}</td><td>${e.from_date} → ${e.to_date}</td><td class="mut">${esc(e.reason)}</td></tr>`).join('')||'<tr><td class="mut">none</td></tr>'}</table></div></div>`;
+}
+go(tab);setInterval(()=>{if(!$('#modal').classList.contains('on')&&['Overview','War'].includes(tab))render()},120000);
+</script>
+</body>
+</html>
