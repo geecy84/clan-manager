@@ -36,6 +36,7 @@ export async function pollClanAndMembers() {
   const now = new Date().toISOString();
   const first = db.prepare('SELECT COUNT(*) c FROM members').get().c === 0;
   const notes = [];
+  if (first) kvSet('tracking_start', now);
 
   const getM = db.prepare('SELECT * FROM members WHERE tag=?');
   const tx = db.transaction(() => {

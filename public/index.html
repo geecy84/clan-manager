@@ -22,7 +22,7 @@ th{color:var(--mut);font-weight:600;cursor:pointer}tr.row:hover{background:var(-
 .r-promote{background:#1f5a42}.r-demote{background:#6a4a1f}.r-warn{background:#6a4a1f}.r-kick{background:#6a2a2a}.s-watch{color:var(--warn)}.s-excused{color:var(--acc)}
 input,select,textarea{background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font:inherit}
 .modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-start;justify-content:center;overflow:auto;z-index:20;padding:20px}
-.modal.on{display:flex}.modal>div{background:var(--bg);border:1px solid var(--bd);border-radius:12px;width:min(1000px,100%);padding:16px}
+.modal.on{display:flex}#jimp.on{display:block!important}.modal>div{background:var(--bg);border:1px solid var(--bd);border-radius:12px;width:min(1000px,100%);padding:16px}
 canvas{max-height:240px}.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.mut{color:var(--mut)}
 .set label{display:grid;grid-template-columns:260px 1fr;gap:8px;margin:4px 0;align-items:center}.set h4{margin:14px 0 4px;color:var(--acc)}
 pre{white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--bd)}
@@ -46,6 +46,9 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const api=(p,o)=>fetch(p,o&&{...o,headers:{'Content-Type':'application/json'},body:o.body&&JSON.stringify(o.body)}).then(r=>r.json());
 const fmt=(v,d=0)=>v==null?'–':Number(v).toFixed(d);
 const ago=iso=>{if(!iso)return'–';const d=(Date.now()-new Date(iso))/864e5;return d<1?Math.round(d*24)+'h ago':d.toFixed(1)+'d ago'};
+const dur=d=>d>=365?Math.floor(d/365)+'y '+Math.floor((d%365)/30.44)+'m':d>=90?Math.floor(d/30.44)+'m':d>=14?Math.floor(d/7)+'w':Math.floor(d)+'d';
+const tenureTxt=m=>m.tenureDays==null?'–':(m.tenureSource==='atleast'?'≥ ':'')+dur(m.tenureDays);
+const tenureTip=m=>({manual:'Set by you',tracked:'Exact: seen joining by this tool',atleast:'At least this long: earliest war they appear in',unknown:'Unknown yet - set a date'}[m.tenureSource])+(m.joinedAt?' · since '+m.joinedAt:'');
 const gp=g=>`<span class="pill g-${esc(g)}">${esc(g)}</span>`;
 const roleName={member:'Member',elder:'Elder',coLeader:'Co-leader',leader:'Leader'};
 const tabs=['Overview','Members','War','Actions','Settings','Log'];
@@ -102,26 +105,30 @@ function lp0(ov){return ov.lastPoll&&!ov.lastPoll.ok?`<div class="card" style="b
 // ---------- Members ----------
 async function Members(){
   members=await api('/api/members');
-  $('#main').innerHTML=`<div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Search name/tag" oninput="drawMembers()"><select id="fs" onchange="drawMembers()"><option value="">All</option><option value="watch">At risk</option><option value="rec">Has recommendation</option><option value="new">New / no data</option><option value="excused">Excused</option></select><a class="btn" href="/api/export/members.csv">Export CSV</a></div><div class="card tw"><table id="mt"></table></div>`;
+  $('#main').innerHTML=`<div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Search name/tag" oninput="drawMembers()"><select id="fs" onchange="drawMembers()"><option value="">All</option><option value="watch">At risk</option><option value="rec">Has recommendation</option><option value="new">New / no data</option><option value="excused">Excused</option></select><a class="btn" href="/api/export/members.csv">Export CSV</a><button class="btn" onclick="$('#jimp').classList.toggle('on')">Set join dates…</button></div>
+  <div id="jimp" class="card" style="display:none;margin-bottom:10px"><b>Bulk set join dates</b><div class="sub">One per line: <code>name or #TAG, date</code> (date as DD/MM/YYYY or YYYY-MM-DD)</div><textarea id="jtx" rows="5" style="width:100%;margin:6px 0" placeholder="Hogger, 14/03/2022"></textarea><button class="btn ok" onclick="importJoined()">Import</button> <span id="jres" class="mut"></span></div><div class="card tw"><table id="mt"></table></div>`;
   drawMembers();
 }
 function drawMembers(){
   const q=($('#q')?.value||'').toLowerCase(),f=$('#fs')?.value||'';
   let rows=members.filter(m=>(!q||m.name.toLowerCase().includes(q)||m.tag.toLowerCase().includes(q))&&(!f||(f==='rec'?m.rec&&!m.snoozed:m.status===f)));
   const {k,d}=sort;rows.sort((a,b)=>{const x=a[k]??-1,y=b[k]??-1;return (typeof x==='string'?x.localeCompare(y):x-y)*d});
-  const H=[['name','Name'],['role','Role'],['grade','Grade'],['score','Score'],['decksPct','Decks %'],['fameScore','Medals'],['donationsAvg','Don/wk'],['daysSinceSeen','Seen'],['countedWars','Wars'],['tenureDays','Tenure'],['trophies','🏆'],['rec','Action']];
+  const H=[['name','Name'],['role','Role'],['grade','Grade'],['score','Score'],['decksPct','Decks %'],['fameScore','Medals'],['donationsAvg','Don/wk'],['daysSinceSeen','Seen'],['countedWars','Wars'],['tenureDays','In clan'],['trophies','🏆'],['rec','Action']];
   $('#mt').innerHTML=`<tr>${H.map(([k,l])=>`<th onclick="sortBy('${k}')">${l}${sort.k===k?(sort.d>0?' ▼':' ▲'):''}</th>`).join('')}</tr>`+rows.map(m=>`<tr class="row" onclick="openMember('${m.tag.slice(1)}')">
     <td class="s-${m.status}">${esc(m.name)}${m.excused?' 🏖':''}</td><td>${roleName[m.role]||m.role}</td><td>${gp(m.grade)}</td>
     <td><div class="bar"><i style="width:${m.score||0}%"></i></div>${fmt(m.score)}</td><td>${fmt(m.decksPct)}</td><td>${fmt(m.fameScore)}</td><td>${fmt(m.donationsAvg)}</td>
-    <td>${m.daysSinceSeen==null?'–':m.daysSinceSeen<1?'today':fmt(m.daysSinceSeen)+'d'}</td><td>${m.countedWars}</td><td>${m.tenureDays==null?'≥tracked':fmt(m.tenureDays)+'d'}</td><td>${m.trophies}</td>
+    <td>${m.daysSinceSeen==null?'–':m.daysSinceSeen<1?'today':fmt(m.daysSinceSeen)+'d'}</td><td>${m.countedWars}</td><td title="${esc(tenureTip(m))}">${tenureTxt(m)}</td><td>${m.trophies}</td>
     <td>${m.rec&&!m.snoozed?`<span class="pill r-${m.rec.action}">${m.rec.action}${m.rec.to?' → '+roleName[m.rec.to]:''}</span>`:''}</td></tr>`).join('');
 }
+async function importJoined(){const r=await api('/api/joined-import',{method:'POST',body:{text:$('#jtx').value}});$('#jres').textContent=r.updated.length+' updated'+(r.unmatched.length?', could not match: '+r.unmatched.join(' | '):'');members=await api('/api/members');drawMembers()}
 function sortBy(k){sort=sort.k===k?{k,d:-sort.d}:{k,d:k==='name'||k==='role'?1:-1};drawMembers()}
 
 async function openMember(t){
   const d=await api('/api/member/%23'+t);const m=d.member;
   const H=d.history.slice().reverse();
   $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">${esc(m.name)}</h2>${gp(m.grade||'N/A')}<span class="mut">${m.tag} · ${roleName[m.role]||m.role}${m.status==='left'?' · LEFT CLAN':''}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
+  <div class="row2" style="margin:8px 0"><b>In clan:</b> <span>${tenureTxt(m)}</span><span class="mut">${esc(tenureTip(m))}</span><span style="flex:1"></span>
+    <span class="mut">Joined on:</span><input type="date" id="jd" value="${m.joinedManual||''}"><button class="btn sm" onclick="setJoined('${m.tag}',$('#jd').value||null)">Save</button><button class="btn sm" onclick="setJoined('${m.tag}',null)">Clear</button></div>
   ${m.rec?`<div class="card" style="margin:10px 0;border-color:var(--warn)"><b>Recommendation: ${m.rec.action.toUpperCase()}${m.rec.to?' → '+roleName[m.rec.to]:''}</b><div class="sub">${esc(m.rec.reasons.join('; '))}</div></div>`:''}
   <div class="grid c2" style="margin-top:10px">
     <div class="card"><h3>Medals per war</h3><div style="height:200px"><canvas id="m1"></canvas></div></div>
@@ -144,6 +151,7 @@ async function openMember(t){
   chart('m3',{type:'bar',data:{labels:d.donations.map(x=>x.start),datasets:[{label:'Donations',data:d.donations.map(x=>x.v),backgroundColor:'#f5b73d'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
   chart('m4',line(d.trophies.map(x=>x.day),[{label:'Trophies',data:d.trophies.map(x=>x.v)}]));
 }
+async function setJoined(tag,date){await api('/api/members/'+encodeURIComponent(tag)+'/joined',{method:'POST',body:{date}});openMember(tag.slice(1))}
 async function logAction(tag,type){await api('/api/actions',{method:'POST',body:{tag,type,note:$('#an').value}});openMember(tag.slice(1))}
 async function addExcuse(tag){const f=$('#ef').value,t=$('#et').value;if(!f||!t)return alert('Pick from and to dates');await api('/api/excuses',{method:'POST',body:{tag,from_date:f,to_date:t,reason:$('#er').value}});openMember(tag.slice(1))}
 async function delExcuse(id,t){await api('/api/excuses/'+id,{method:'DELETE'});openMember(t)}

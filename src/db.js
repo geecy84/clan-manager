@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS excuses(
   id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT, from_date TEXT, to_date TEXT, reason TEXT);
 `);
 
+try { db.exec('ALTER TABLE members ADD COLUMN joined_manual TEXT'); } catch { /* already there */ }
+
 export const kvGet = (key, fallback = null) => {
   const r = db.prepare('SELECT value FROM kv WHERE key=?').get(key);
   if (!r) return fallback;

@@ -87,6 +87,11 @@ export function evaluate(now = new Date()) {
     warTarget.set(warKey(w), t);
   }
   const members = db.prepare('SELECT * FROM members WHERE active=1').all();
+  const firstApp = new Map(); // earliest war each member appears in (lower bound for time in clan)
+  for (const w of wars) for (const tag of byWar.get(warKey(w))?.keys() || []) {
+    const cur = firstApp.get(tag);
+    if (!cur || w.ended_at < cur) firstApp.set(tag, w.ended_at);
+  }
   const excuses = db.prepare('SELECT * FROM excuses').all();
   const actions = db.prepare('SELECT * FROM actions ORDER BY ts DESC').all();
   const weeklyStmt = db.prepare(
@@ -96,7 +101,12 @@ export function evaluate(now = new Date()) {
     e.tag === tag && new Date(e.from_date + 'T00:00:00Z') <= to && new Date(e.to_date + 'T23:59:59Z') >= from);
 
   const out = members.map((m) => {
-    const joined = m.baseline ? null : new Date(m.first_seen);
+    const manual = m.joined_manual ? new Date(m.joined_manual + 'T00:00:00Z') : null;
+    const joined = manual || (m.baseline ? null : new Date(m.first_seen));
+    let joinedAt = null, tenureSource = 'unknown';
+    if (manual) { joinedAt = manual; tenureSource = 'manual'; }
+    else if (!m.baseline) { joinedAt = new Date(m.first_seen); tenureSource = 'tracked'; }
+    else if (firstApp.get(m.tag)) { joinedAt = new Date(new Date(firstApp.get(m.tag)) - G.warLengthDays * DAY); tenureSource = 'atleast'; }
     const history = [];
     for (const w of wars) {
       const row = byWar.get(warKey(w))?.get(m.tag);
@@ -148,7 +158,7 @@ export function evaluate(now = new Date()) {
     for (const h of history.filter((x) => !x.excluded)) {
       if (h.decksPct < R.kick.badWarDecksPct) badStreak++; else break;
     }
-    const tenureDays = joined ? days(now, joined) : null;
+    const tenureDays = joinedAt ? days(now, joinedAt) : null;
     const excusedNow = excusedOn(m.tag, now, now);
     const myActions = actions.filter((a) => a.tag === m.tag);
     const warnings = myActions.filter((a) => a.type === 'warn' && days(now, new Date(a.ts)) <= R.kick.warningValidDays).length;
@@ -163,6 +173,7 @@ export function evaluate(now = new Date()) {
       tag: m.tag, name: m.name, role: m.role, trophies: m.trophies, donations: m.donations,
       donationsReceived: m.donations_received, lastSeen: m.last_seen, daysSinceSeen, tenureDays,
       baseline: !!m.baseline, firstSeen: m.first_seen,
+      joinedAt: joinedAt ? joinedAt.toISOString().slice(0, 10) : null, tenureSource, joinedManual: m.joined_manual || null,
       countedWars: counted.length, score, grade, decksPct: decksAvg, fameScore: fameAvg,
       donationsAvg: donAvg, donationsScore: donScore, activityScore: actScore,
       lastWar: history[0] || null, badStreak, warnings, excused: excusedNow, status, snoozed, rec, history,

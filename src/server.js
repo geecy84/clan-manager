@@ -77,6 +77,31 @@ app.get('/api/member/:tag', wrap((req) => {
   };
 }));
 
+app.post('/api/members/:tag/joined', wrap((req) => {
+  const d = req.body?.date || null;
+  if (d && (!/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(new Date(d)) || new Date(d).toISOString().slice(0, 10) !== d)) throw new Error('Not a valid date');
+  db.prepare('UPDATE members SET joined_manual=? WHERE tag=?').run(d, normTag(req.params.tag));
+  return { ok: true };
+}));
+// Bulk import: one per line, "name or #TAG, date" where date is YYYY-MM-DD or DD/MM/YYYY
+app.post('/api/joined-import', wrap((req) => {
+  const active = db.prepare('SELECT tag,name FROM members WHERE active=1').all();
+  const done = [], bad = [];
+  for (const raw of String(req.body?.text || '').split('\n')) {
+    const line = raw.trim(); if (!line) continue;
+    const i = line.lastIndexOf(',');
+    const who = line.slice(0, i).trim(), ds = line.slice(i + 1).trim();
+    let date = null, m;
+    if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ds))) date = ds;
+    else if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ds))) date = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    const mem = i > 0 && active.find((a) => a.tag === normTag(who) || a.name.toLowerCase() === who.toLowerCase());
+    const valid = date && !isNaN(new Date(date)) && new Date(date).toISOString().slice(0, 10) === date;
+    if (!valid || !mem) { bad.push(line); continue; }
+    db.prepare('UPDATE members SET joined_manual=? WHERE tag=?').run(date, mem.tag);
+    done.push(`${mem.name} → ${date}`);
+  }
+  return { updated: done, unmatched: bad };
+}));
 app.get('/api/wars', wrap(() => db.prepare('SELECT season_id,section_index,ended_at,rank,trophy_change,fame,repair_points,finish_time,clan_score FROM wars ORDER BY ended_at DESC').all()));
 app.get('/api/war/:season/:section', wrap((req) => {
   const d = warDetail(Number(req.params.season), Number(req.params.section));
@@ -129,10 +154,10 @@ app.post('/api/test-discord', async (req, res) => res.json({ sent: await discord
 
 app.get('/api/export/members.csv', (req, res) => {
   const rows = evaluate().members;
-  const head = ['tag', 'name', 'role', 'grade', 'score', 'countedWars', 'decksPct', 'medalsScore', 'donationsAvg', 'daysSinceSeen', 'recommendation'];
+  const head = ['tag', 'name', 'role', 'grade', 'score', 'countedWars', 'decksPct', 'medalsScore', 'donationsAvg', 'daysSinceSeen', 'joinedAt', 'tenureSource', 'recommendation'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [head.join(',')].concat(rows.map((m) => [m.tag, m.name, m.role, m.grade, m.score?.toFixed(1), m.countedWars,
-    m.decksPct?.toFixed(1), m.fameScore?.toFixed(1), m.donationsAvg, m.daysSinceSeen?.toFixed(1), m.rec ? m.rec.action : ''].map(esc).join(','))).join('\n');
+    m.decksPct?.toFixed(1), m.fameScore?.toFixed(1), m.donationsAvg, m.daysSinceSeen?.toFixed(1), m.joinedAt, m.tenureSource, m.rec ? m.rec.action : ''].map(esc).join(','))).join('\n');
   res.type('text/csv').attachment('members.csv').send(csv);
 });
 
