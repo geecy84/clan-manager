@@ -129,7 +129,7 @@ app.post('/api/test-discord', async (req, res) => res.json({ sent: await discord
 
 app.get('/api/export/members.csv', (req, res) => {
   const rows = evaluate().members;
-  const head = ['tag', 'name', 'role', 'grade', 'score', 'countedWars', 'decksPct', 'fameScore', 'donationsAvg', 'daysSinceSeen', 'recommendation'];
+  const head = ['tag', 'name', 'role', 'grade', 'score', 'countedWars', 'decksPct', 'medalsScore', 'donationsAvg', 'daysSinceSeen', 'recommendation'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [head.join(',')].concat(rows.map((m) => [m.tag, m.name, m.role, m.grade, m.score?.toFixed(1), m.countedWars,
     m.decksPct?.toFixed(1), m.fameScore?.toFixed(1), m.donationsAvg, m.daysSinceSeen?.toFixed(1), m.rec ? m.rec.action : ''].map(esc).join(','))).join('\n');

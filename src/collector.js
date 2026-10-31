@@ -127,7 +127,7 @@ export async function pollLog() {
   if (!firstRun && fresh.length && getSettings().notifications.onNewWarResult) {
     for (const w of fresh) {
       await discord(`🏁 War finished (season ${w.seasonId}, week ${w.sectionIndex + 1}): rank **${w.rank}**, ` +
-        `${w.fame} fame, trophies ${w.trophyChange >= 0 ? '+' : ''}${w.trophyChange}, ${w.participants} members played.`);
+        `${w.fame} medals, trophies ${w.trophyChange >= 0 ? '+' : ''}${w.trophyChange}, ${w.participants} members played.`);
     }
   }
 }

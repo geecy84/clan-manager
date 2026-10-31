@@ -79,19 +79,19 @@ async function Overview(ov){
   <div class="grid k4">
     <div class="card"><h3>Members</h3><div class="kpi">${c.members??'–'}/50</div><div class="sub">avg score ${fmt(s.avgScore)}</div></div>
     <div class="card"><h3>Clan score / war trophies</h3><div class="kpi">${c.clanScore??'–'}</div><div class="sub">${c.clanWarTrophies??'–'} war trophies</div></div>
-    <div class="card"><h3>Last war</h3><div class="kpi">${lw?'#'+lw.rank:'–'}</div><div class="sub">${lw?lw.fame+' fame · '+(lw.trophy_change>=0?'+':'')+lw.trophy_change+' trophies':'no war log yet'}</div></div>
+    <div class="card"><h3>Last war</h3><div class="kpi">${lw?'#'+lw.rank:'–'}</div><div class="sub">${lw?lw.fame+' medals · '+(lw.trophy_change>=0?'+':'')+lw.trophy_change+' trophies':'no war log yet'}</div></div>
     <div class="card"><h3>Participation last war</h3><div class="kpi">${part&&part.total?Math.round(part.played/part.total*100)+'%':'–'}</div><div class="sub">${part?part.played+'/'+part.total+' played':''}</div></div>
     <div class="card"><h3>At-risk members</h3><div class="kpi" style="color:var(--warn)">${s.atRisk}</div><div class="sub">below watch threshold</div></div>
     <div class="card"><h3>Pending recommendations</h3><div class="kpi">${ov.pendingRecs}</div><div class="sub"><a href="#" style="color:var(--acc)" onclick="go('Actions');return false">review</a></div></div>
   </div>
   <div class="grid c2" style="margin-top:12px">
-    <div class="card"><h3>Fame per war &amp; finishing rank</h3><div style="height:240px"><canvas id="c1"></canvas></div></div>
+    <div class="card"><h3>Medals per war &amp; finishing rank</h3><div style="height:240px"><canvas id="c1"></canvas></div></div>
     <div class="card"><h3>Members who played (%)</h3><div style="height:240px"><canvas id="c2"></canvas></div></div>
     <div class="card"><h3>Clan size &amp; score over time</h3><div style="height:240px"><canvas id="c3"></canvas></div></div>
     <div class="card"><h3>Grade distribution</h3><div style="height:240px"><canvas id="c4"></canvas></div></div>
   </div>`;
   const L=ov.warSeries.map(w=>w.label);
-  chart('c1',{type:'bar',data:{labels:L,datasets:[{label:'Fame',data:ov.warSeries.map(w=>w.fame),backgroundColor:'#4f8cff',yAxisID:'y'},{type:'line',label:'Rank',data:ov.warSeries.map(w=>w.rank),borderColor:'#f5b73d',yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,scales:{y1:{position:'right',reverse:true,min:1,max:5,grid:{display:false},ticks:{stepSize:1}}}}});
+  chart('c1',{type:'bar',data:{labels:L,datasets:[{label:'Medals',data:ov.warSeries.map(w=>w.fame),backgroundColor:'#4f8cff',yAxisID:'y'},{type:'line',label:'Rank',data:ov.warSeries.map(w=>w.rank),borderColor:'#f5b73d',yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,scales:{y1:{position:'right',reverse:true,min:1,max:5,grid:{display:false},ticks:{stepSize:1}}}}});
   chart('c2',line(L,[{label:'% played',data:ov.warSeries.map(w=>w.total?Math.round(w.played/w.total*100):null)}],{scales:{y:{min:0,max:100}}}));
   chart('c3',line(ov.clanSeries.map(d=>d.day),[{label:'Members',data:ov.clanSeries.map(d=>d.members),yAxisID:'y'},{label:'Clan score',data:ov.clanSeries.map(d=>d.clan_score),yAxisID:'y1'}],{scales:{y1:{position:'right',grid:{display:false}}}}));
   const order=['A+','A','B','C','D','F','N/A'];
@@ -109,7 +109,7 @@ function drawMembers(){
   const q=($('#q')?.value||'').toLowerCase(),f=$('#fs')?.value||'';
   let rows=members.filter(m=>(!q||m.name.toLowerCase().includes(q)||m.tag.toLowerCase().includes(q))&&(!f||(f==='rec'?m.rec&&!m.snoozed:m.status===f)));
   const {k,d}=sort;rows.sort((a,b)=>{const x=a[k]??-1,y=b[k]??-1;return (typeof x==='string'?x.localeCompare(y):x-y)*d});
-  const H=[['name','Name'],['role','Role'],['grade','Grade'],['score','Score'],['decksPct','Decks %'],['fameScore','Fame'],['donationsAvg','Don/wk'],['daysSinceSeen','Seen'],['countedWars','Wars'],['tenureDays','Tenure'],['trophies','🏆'],['rec','Action']];
+  const H=[['name','Name'],['role','Role'],['grade','Grade'],['score','Score'],['decksPct','Decks %'],['fameScore','Medals'],['donationsAvg','Don/wk'],['daysSinceSeen','Seen'],['countedWars','Wars'],['tenureDays','Tenure'],['trophies','🏆'],['rec','Action']];
   $('#mt').innerHTML=`<tr>${H.map(([k,l])=>`<th onclick="sortBy('${k}')">${l}${sort.k===k?(sort.d>0?' ▼':' ▲'):''}</th>`).join('')}</tr>`+rows.map(m=>`<tr class="row" onclick="openMember('${m.tag.slice(1)}')">
     <td class="s-${m.status}">${esc(m.name)}${m.excused?' 🏖':''}</td><td>${roleName[m.role]||m.role}</td><td>${gp(m.grade)}</td>
     <td><div class="bar"><i style="width:${m.score||0}%"></i></div>${fmt(m.score)}</td><td>${fmt(m.decksPct)}</td><td>${fmt(m.fameScore)}</td><td>${fmt(m.donationsAvg)}</td>
@@ -124,7 +124,7 @@ async function openMember(t){
   $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">${esc(m.name)}</h2>${gp(m.grade||'N/A')}<span class="mut">${m.tag} · ${roleName[m.role]||m.role}${m.status==='left'?' · LEFT CLAN':''}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
   ${m.rec?`<div class="card" style="margin:10px 0;border-color:var(--warn)"><b>Recommendation: ${m.rec.action.toUpperCase()}${m.rec.to?' → '+roleName[m.rec.to]:''}</b><div class="sub">${esc(m.rec.reasons.join('; '))}</div></div>`:''}
   <div class="grid c2" style="margin-top:10px">
-    <div class="card"><h3>Fame per war</h3><div style="height:200px"><canvas id="m1"></canvas></div></div>
+    <div class="card"><h3>Medals per war</h3><div style="height:200px"><canvas id="m1"></canvas></div></div>
     <div class="card"><h3>Decks used per war</h3><div style="height:200px"><canvas id="m2"></canvas></div></div>
     <div class="card"><h3>Weekly donations</h3><div style="height:200px"><canvas id="m3"></canvas></div></div>
     <div class="card"><h3>Trophies</h3><div style="height:200px"><canvas id="m4"></canvas></div></div>
@@ -134,12 +134,12 @@ async function openMember(t){
     ${['warn','promote','demote','kick','note','snooze'].map(a=>`<button class="btn sm" onclick="logAction('${m.tag}','${a}')">${a==='snooze'?'snooze recs':a==='note'?'add note':'log '+a}</button>`).join('')}
   </div>
   <div class="row2" style="margin-bottom:12px"><b>Excuse (holiday etc.):</b><input type="date" id="ef"><input type="date" id="et"><input id="er" placeholder="reason"><button class="btn sm" onclick="addExcuse('${m.tag}')">Add</button></div>
-  <div class="card tw"><h3>War history</h3><table><tr><th>War</th><th>Decks</th><th>Fame</th><th>Boat atk</th><th>Grade</th><th></th></tr>
+  <div class="card tw"><h3>War history</h3><table><tr><th>War</th><th>Decks</th><th>Medals</th><th>Boat atk</th><th>Grade</th><th></th></tr>
   ${d.history.map(h=>`<tr><td>S${h.season_id} W${h.section_index+1}</td><td>${h.decks}/16</td><td>${h.fame}</td><td>${h.boats??''}</td><td>${h.grade?gp(h.grade):''}</td><td class="mut">${h.excluded==='new'?'new joiner – not counted':h.excluded==='excused'?'excused':''}</td></tr>`).join('')||'<tr><td colspan=6 class="mut">No war data yet</td></tr>'}</table></div>
   <div class="card" style="margin-top:12px"><h3>Actions, notes &amp; events</h3>${[...d.actions.map(a=>`<div>${a.ts.slice(0,10)} · <b>${a.type}</b> ${esc(a.note)}</div>`),...d.events.map(e=>`<div class="mut">${e.ts.slice(0,10)} · ${e.type} ${esc(e.detail)}</div>`),...d.excuses.map(e=>`<div>🏖 ${e.from_date} → ${e.to_date} ${esc(e.reason)} <button class="btn sm bad" onclick="delExcuse(${e.id},'${t}')">remove</button></div>`)].join('')||'<span class="mut">Nothing yet</span>'}</div>`;
   $('#modal').classList.add('on');
   const L=H.map(h=>`S${h.season_id}W${h.section_index+1}`);
-  chart('m1',line(L,[{label:'Fame',data:H.map(h=>h.fame)}]));
+  chart('m1',line(L,[{label:'Medals',data:H.map(h=>h.fame)}]));
   chart('m2',{type:'bar',data:{labels:L,datasets:[{label:'Decks',data:H.map(h=>h.decks),backgroundColor:'#3ecf8e'}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:0,max:16}},plugins:{legend:{display:false}}}});
   chart('m3',{type:'bar',data:{labels:d.donations.map(x=>x.start),datasets:[{label:'Donations',data:d.donations.map(x=>x.v),backgroundColor:'#f5b73d'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
   chart('m4',line(d.trophies.map(x=>x.day),[{label:'Trophies',data:d.trophies.map(x=>x.v)}]));
@@ -154,20 +154,20 @@ async function War(){
   const n=cur.nudge,r=cur.race;
   const dayType={training:'Training day',warDay:'War day',colosseum:'Colosseum'}[r?.periodType]||r?.periodType||'–';
   $('#main').innerHTML=`<div class="grid c2">
-  <div class="card"><h3>Live race — ${esc(dayType)}</h3>${r?`<div class="kpi">${r.fame??0} fame</div><div class="sub">updated ${ago(r.at)}</div>
-   <table style="margin-top:8px"><tr><th>Clan</th><th>Fame</th><th>Finished</th></tr>${(r.clans||[]).sort((a,b)=>b.fame-a.fame).map(c=>`<tr><td>${esc(c.name)}</td><td>${c.fame}</td><td>${c.finishTime?ago(c.finishTime):''}</td></tr>`).join('')}</table>`:'<span class="mut">No race data yet</span>'}</div>
-  <div class="card"><h3>Fame progress this week</h3><div style="height:220px"><canvas id="w1"></canvas></div></div></div>
+  <div class="card"><h3>Live race — ${esc(dayType)}</h3>${r?`<div class="kpi">${r.fame??0} medals</div><div class="sub">updated ${ago(r.at)}</div>
+   <table style="margin-top:8px"><tr><th>Clan</th><th>Medals</th><th>Finished</th></tr>${(r.clans||[]).sort((a,b)=>b.fame-a.fame).map(c=>`<tr><td>${esc(c.name)}</td><td>${c.fame}</td><td>${c.finishTime?ago(c.finishTime):''}</td></tr>`).join('')}</table>`:'<span class="mut">No race data yet</span>'}</div>
+  <div class="card"><h3>Medals progress this week</h3><div style="height:220px"><canvas id="w1"></canvas></div></div></div>
   <div class="card" style="margin-top:12px"><h3>Nudge list — who still has decks today</h3>
   ${n?`<div class="row2"><b>${n.totalLeft} decks left</b><span class="mut">${n.live?'':'(not a war day)'}</span><button class="btn sm" onclick="navigator.clipboard.writeText($('#nt').textContent)">Copy for clan chat</button></div><pre id="nt">${esc(n.text)}</pre>
   <div class="tw"><table><tr><th>Member</th><th>Role</th><th>Left today</th><th>Total used</th></tr>${n.missing.map(x=>`<tr><td>${esc(x.name)}</td><td>${roleName[x.role]}</td><td>${x.left}</td><td>${x.usedTotal}</td></tr>`).join('')}</table></div>`:'<span class="mut">No data</span>'}</div>
-  <div class="card tw" style="margin-top:12px"><h3>Previous wars (click for member grades)</h3><table><tr><th>War</th><th>Ended</th><th>Rank</th><th>Fame</th><th>Trophies</th><th>Finish time</th></tr>
+  <div class="card tw" style="margin-top:12px"><h3>Previous wars (click for member grades)</h3><table><tr><th>War</th><th>Ended</th><th>Rank</th><th>Medals</th><th>Trophies</th><th>Finish time</th></tr>
   ${wars.map(w=>`<tr class="row" onclick="openWar(${w.season_id},${w.section_index})"><td>S${w.season_id} W${w.section_index+1}</td><td>${w.ended_at.slice(0,10)}</td><td>#${w.rank}</td><td>${w.fame}</td><td>${w.trophy_change>=0?'+':''}${w.trophy_change}</td><td>${w.finish_time?w.finish_time.slice(0,16).replace('T',' '):'did not finish'}</td></tr>`).join('')||'<tr><td colspan=6 class="mut">No race log yet</td></tr>'}</table></div>`;
-  chart('w1',line(cur.snaps.map(s=>s.ts.slice(5,13).replace('T',' ')+'h'),[{label:'Clan fame',data:cur.snaps.map(s=>s.fame)}],{plugins:{legend:{display:false}}}));
+  chart('w1',line(cur.snaps.map(s=>s.ts.slice(5,13).replace('T',' ')+'h'),[{label:'Clan medals',data:cur.snaps.map(s=>s.fame)}],{plugins:{legend:{display:false}}}));
 }
 async function openWar(s,i){
   const d=await api(`/api/war/${s}/${i}`);
-  $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">S${s} W${i+1} — rank #${d.war.rank}</h2><span class="mut">fame target for 100%: ${Math.round(d.fameTarget)}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
-  <div class="card tw" style="margin-top:10px"><table><tr><th>Player</th><th>Grade</th><th>Decks</th><th>Fame</th><th>Boat atk</th><th>Repair</th></tr>
+  $('#mbody').innerHTML=`<div class="row2"><h2 style="margin:0">S${s} W${i+1} — rank #${d.war.rank}</h2><span class="mut">medals target for 100%: ${Math.round(d.fameTarget)}</span><span style="flex:1"></span><button class="btn" onclick="closeModal()">Close</button></div>
+  <div class="card tw" style="margin-top:10px"><table><tr><th>Player</th><th>Grade</th><th>Decks</th><th>Medals</th><th>Boat atk</th><th>Repair</th></tr>
   ${d.players.map(p=>`<tr><td>${esc(p.name)}${p.current?'':' <span class="mut">(left)</span>'}</td><td>${gp(p.grade)}</td><td>${p.decks}/16</td><td>${p.fame}</td><td>${p.boats}</td><td>${p.repair}</td></tr>`).join('')}</table></div>
   <div class="card tw" style="margin-top:10px"><h3>All clans in this race</h3><table>${d.war.standings.map(c=>`<tr><td>#${c.rank}</td><td>${esc(c.name)}</td><td>${c.fame}</td><td>${c.trophyChange>=0?'+':''}${c.trophyChange}</td></tr>`).join('')}</table></div>`;
   $('#modal').classList.add('on');
@@ -193,7 +193,8 @@ async function Settings(){
   const build=(o,p)=>Object.entries(o).map(([k,v])=>{const path=p?p+'.'+k:k;
     if(v&&typeof v==='object'&&!Array.isArray(v))return `<h4>${esc(path)}</h4>`+build(v,path);
     const t=typeof v;const val=Array.isArray(v)?v.join(', '):v;
-    return `<label>${esc(path)}${t==='boolean'?`<input type="checkbox" data-p="${path}" data-t="b" ${v?'checked':''}>`:`<input data-p="${path}" data-t="${Array.isArray(v)?'a':t==='number'?'n':'s'}" value="${esc(val)}">`}</label>`}).join('');
+    const lab=path.replace('fameTargetPercentile','medalsTargetPercentile').replace('fameTarget','medalsTarget').replace('weights.fame','weights.medals');
+    return `<label>${esc(lab)}${t==='boolean'?`<input type="checkbox" data-p="${path}" data-t="b" ${v?'checked':''}>`:`<input data-p="${path}" data-t="${Array.isArray(v)?'a':t==='number'?'n':'s'}" value="${esc(val)}">`}</label>`}).join('');
   $('#main').innerHTML=`<div class="card set"><h3>Grading, rules &amp; notifications</h3><p class="mut">Weights are relative (they're normalised). Grade thresholds are the minimum score for each grade. Everything here takes effect immediately for scoring.</p>${build(SET,'')}
   <div class="row2" style="margin-top:14px"><button class="btn ok" onclick="saveSet()">Save</button><button class="btn" onclick="testDiscord()">Send test Discord message</button><button class="btn bad" onclick="resetSet()">Reset to defaults</button><span id="sm" class="mut"></span></div></div>`;
 }
