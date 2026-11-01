@@ -28,8 +28,7 @@ if [ ! -f .env ]; then
   echo "Your public IP address is: $(curl -s ifconfig.me)"
   echo "Create the Clash Royale API key now using that IP (see the PDF), then paste the key below."
   read -rp "API key: " KEY </dev/tty
-  read -rp "Choose a dashboard password (letters and numbers only): " PW </dev/tty
-  printf 'CR_API_KEY=%s\nAPP_PASSWORD=%s\n' "$KEY" "$PW" > .env
+  printf 'CR_API_KEY=%s\n' "$KEY" > .env
   chmod 600 .env
 else
   echo ".env already exists, keeping it."

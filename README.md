@@ -17,4 +17,4 @@ No Docker: `npm install && node --env-file=.env src/server.js`. Try without a ke
 - Everything tunable is in the Settings tab: weights, grade cut-offs, medals target, rules, Discord webhook, reminder times.
 
 ## Proxmox LXC (no Docker)
-In a Debian 13 container as root: `bash <(curl -fsSL https://raw.githubusercontent.com/<you>/clan-manager/main/scripts/install-lxc.sh)` — installs everything, asks for the API key and a dashboard password, and auto-pulls GitHub changes every 5 minutes (repo must be public, or use a deploy key).
+In a Debian 13 container as root: `bash <(curl -fsSL https://raw.githubusercontent.com/<you>/clan-manager/main/scripts/install-lxc.sh)` — installs everything, asks for the API key, and auto-pulls GitHub changes every 5 minutes (repo must be public, or use a deploy key).
